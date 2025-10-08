@@ -40,6 +40,7 @@ class _MainScreenState extends State<MainScreen> with WindowListener {
   bool isInitValueInserted = false;
   bool showMeso = false;
   bool showExpectedTime = false;
+  bool isUpdatingData = false;
 
   // UI 관련 시간 설정
   Duration showAverage = Duration.zero;
@@ -63,8 +64,8 @@ class _MainScreenState extends State<MainScreen> with WindowListener {
   int averageExp = 0;
   double averagePercentage = 0.0;
   int averageMeso = 0;
-  int expBeforeLevelUp = 0;
-  double percentageBeforeLevelUp = 0.0;
+  int totalExpFromCompletedLevels = 0;
+  double totalPercentageFromCompletedLevels = 0.0;
 
   int storedExp = 0;
   double storedPercentage = 0.0;
@@ -321,64 +322,110 @@ class _MainScreenState extends State<MainScreen> with WindowListener {
   }
 
   Future<void> _updateData({required bool fetchData}) async {
-    if (fetchData) {
-      try {
-        final expResponse = await http.get(Uri.parse('http://127.0.0.1:5000/extract_exp_and_level'));
-        if (expResponse.statusCode != 200) {
-          throw Exception("Failed to fetch EXP data");
-        }
-        final expData = json.decode(expResponse.body);
-        int exp = expData['exp'];
-        double percentage = expData['percentage'];
-        int level = expData['level'];
-        Map<String, dynamic>? mesoData;
-        if (showMeso) {
-          final mesoResponse = await http.get(Uri.parse('http://127.0.0.1:5000/extract_meso'));
-          if (mesoResponse.statusCode == 200) {
-            mesoData = json.decode(mesoResponse.body);
-          } else {
-            throw Exception("Failed to fetch Meso data");
+    if (isUpdatingData) {
+      return;
+    }
+    isUpdatingData = true;
+    try {
+      if (fetchData) {
+        try {
+          final expResponse = await http.get(Uri.parse('http://127.0.0.1:5000/extract_exp_and_level'));
+          if (expResponse.statusCode != 200) {
+            throw Exception("Failed to fetch EXP data");
           }
-        }
-        _safeSetState(() {
-          if (initialLevel == 0) {
-            initialLevel = level;
-            initialExp = exp;
-            initialPercentage = percentage;
-            isInitValueInserted = true;
-          } else {
-            if (level > lastLevel && ((level - lastLevel) == 1 || (level - lastLevel) == 2)) {
-              int levelUpExp = _expDataLoader.getExpForLevel(lastLevel);
-              expBeforeLevelUp = levelUpExp - lastExp + totalExp;
-              percentageBeforeLevelUp = 100 - lastPercentage + totalPercentage;
-              initialExp = 0;
-              initialPercentage = 0.0;
-            }
-            totalExp = exp - initialExp + expBeforeLevelUp + storedExp;
-            totalPercentage = percentage - initialPercentage + percentageBeforeLevelUp + storedPercentage;
-            lastExp = exp;
-            lastPercentage = percentage;
-            lastLevel = level;
-          }
-          if (mesoData != null) {
-            int meso = mesoData['meso'];
-            if (initialMeso == 0) {
-              initialMeso = meso;
+          final expData = json.decode(expResponse.body);
+          int exp = expData['exp'];
+          double percentage = expData['percentage'];
+          int level = expData['level'];
+          Map<String, dynamic>? mesoData;
+          if (showMeso) {
+            final mesoResponse = await http.get(Uri.parse('http://127.0.0.1:5000/extract_meso'));
+            if (mesoResponse.statusCode == 200) {
+              mesoData = json.decode(mesoResponse.body);
             } else {
-              totalMeso = meso - initialMeso + storedMeso;
+              throw Exception("Failed to fetch Meso data");
             }
           }
+          _safeSetState(() {
+            // --- A. 최초 실행 시 변수 초기화 ---
+            if (initialLevel == 0) {
+              initialLevel = level;
+              initialExp = exp;
+              initialPercentage = percentage;
+              lastLevel = level;
+              lastExp = exp;
+              lastPercentage = percentage;
+              isInitValueInserted = true;
+            }
+            // --- B. 게임 데이터 업데이트 ---
+            else {
+              // --- B-1. 레벨업 했을 때의 모든 처리 (계산 및 디버깅) ---
+              if (level > lastLevel) {
+                safeLog("레벨업!");
+                int maxExpForLastLevel = _expDataLoader.getExpForLevel(lastLevel);
+
+                // --- (1) 레벨업 직전(이전 틱) 상태 출력 ---
+                debugPrint("================= LEVEL UP: BEFORE CALCULATION ==================");
+                debugPrint(" [PREVIOUS TICK STATE]");
+                debugPrint("   - Level: $lastLevel");
+                debugPrint("   - EXP: $lastExp / $maxExpForLastLevel");
+                debugPrint("   - totalExp (Before this level-up): $totalExp");
+                debugPrint("   - initialExp (Start EXP for this level): $initialExp");
+                debugPrint("   - totalExpFromCompletedLevels (Old): $totalExpFromCompletedLevels");
+                debugPrint("--------------------------------------------------");
+
+                // --- (2) 레벨업 계산 수행 ---
+                int expGainedThisLevel = maxExpForLastLevel - initialExp;
+                totalExpFromCompletedLevels += expGainedThisLevel;
+                initialExp = 0; // 새 레벨의 출발선은 0
+
+                double percentageGainedThisLevel = 100.0 - initialPercentage;
+                totalPercentageFromCompletedLevels += percentageGainedThisLevel;
+                initialPercentage = 0.0;
+                
+                // --- (3) 레벨업 직후(현재 틱) 상태 및 최종 계산 결과 출력 ---
+                //      (최종 totalExp는 이 블록 바로 바깥에서 계산되므로, 그 전에 주요 값들을 출력)
+                debugPrint(" [CURRENT TICK STATE & CALCULATION RESULT]");
+                debugPrint("   - New Level (Current): $level");
+                debugPrint("   - New EXP (Current): $exp");
+                debugPrint("   - Exp Gained This Level (Calculated): $expGainedThisLevel");
+                debugPrint("   - totalExpFromCompletedLevels (Updated): $totalExpFromCompletedLevels");
+                debugPrint("============================================================");
+              }
+
+              // --- B-2. 최종 누적 경험치 계산 (매 틱 실행) ---
+              totalExp = (exp - initialExp) + totalExpFromCompletedLevels + storedExp;
+              totalPercentage = (percentage - initialPercentage) + totalPercentageFromCompletedLevels + storedPercentage;
+
+              // --- B-3. 다음 계산을 위해 현재 값을 '마지막 값'으로 저장 ---
+              lastExp = exp;
+              lastPercentage = percentage;
+              lastLevel = level;
+            }
+
+            // --- C. 메소 및 평균값 계산 (공통) ---
+            if (mesoData != null) {
+              int meso = mesoData['meso'];
+              if (initialMeso == 0) {
+                initialMeso = meso;
+              } else {
+                totalMeso = meso - initialMeso + storedMeso;
+              }
+            }
+            _calculateAverage();
+            timerText = _formatDuration(_elapsedTime);
+          });
+        } catch (e) {
+          safeLog("[Server] Error updating data: $e");
+        }
+      } else {
+        _safeSetState(() {
           _calculateAverage();
           timerText = _formatDuration(_elapsedTime);
         });
-      } catch (e) {
-        safeLog("[Server] Error updating data: $e");
       }
-    } else {
-      _safeSetState(() {
-        _calculateAverage();
-        timerText = _formatDuration(_elapsedTime);
-      });
+    } finally {
+      isUpdatingData = false;
     }
   }
 
@@ -398,7 +445,7 @@ class _MainScreenState extends State<MainScreen> with WindowListener {
         await _updateData(fetchData: true);
       }
       if (timerEndTime != Duration.zero && _elapsedTime >= timerEndTime) {
-        _audioPlayer.play(AssetSource('timer_alarm.mp3'));
+        _audioPlayer.play(AssetSource('assets/timer_alarm.mp3'));
         await _stopTimer();
       }
     });
@@ -429,14 +476,15 @@ class _MainScreenState extends State<MainScreen> with WindowListener {
       initialMeso = 0;
       lastExp = 0;
       lastPercentage = 0;
+      lastLevel = 0; // lastLevel도 리셋
       totalExp = 0;
       totalPercentage = 0;
       totalMeso = 0;
       averageExp = 0;
       averagePercentage = 0;
       averageMeso = 0;
-      expBeforeLevelUp = 0;
-      percentageBeforeLevelUp = 0;
+      totalExpFromCompletedLevels = 0;
+      totalPercentageFromCompletedLevels = 0;
       storedExp = 0;
       storedPercentage = 0;
       storedMeso = 0;
@@ -553,265 +601,265 @@ class _MainScreenState extends State<MainScreen> with WindowListener {
             height: appSize.height,
             child: Column(
               children: [
-            const SizedBox(height: 4),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                const SizedBox(width: 8),
-                CupertinoButton(
-                  padding: EdgeInsets.zero,
-                  onPressed: _launchURL,
-                  child: const Icon(
-                    CupertinoIcons.info,
-                    color: CupertinoColors.systemGrey6,
-                    size: 24,
-                  ),
-                ),
-                SizedBox(
-                  width: 148,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      Transform.scale(
-                        scale: 0.8,
-                        child: CupertinoSwitch(
-                          value: showMeso,
-                          onChanged: (bool value) async {
-                            _safeSetState(() {
-                              showMeso = value;
-                            });
-                            _saveConfig();
-                            if (value) {
-                              await _openMesoRectSelectScreen();
-                            }
-                          },
-                          inactiveThumbColor: CupertinoColors.inactiveGray,
-                          inactiveTrackColor: CupertinoColors.inactiveGray,
-                          activeTrackColor: CupertinoColors.activeBlue,
-                          thumbColor: CupertinoColors.activeBlue,
-                          activeThumbImage: const AssetImage('assets/meso.png'),
-                          inactiveThumbImage:
-                              const AssetImage('assets/meso.png'),
-                        ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    const SizedBox(width: 8),
+                    CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      onPressed: _launchURL,
+                      child: const Icon(
+                        CupertinoIcons.info,
+                        color: CupertinoColors.systemGrey6,
+                        size: 24,
                       ),
-                    ],
-                  ),
-                ),
-                CupertinoButton(
-                  padding: EdgeInsets.zero,
-                  onPressed: () async {
-                    _resetTimer();
-                  },
-                  child: const Icon(
-                    CupertinoIcons.restart,
-                    color: CupertinoColors.systemGrey6,
-                    size: 24,
-                  ),
-                ),
-                CupertinoButton(
-                  padding: EdgeInsets.zero,
-                  onPressed: () async {
-                    await _openRectSelectScreen();
-                  },
-                  child: const Icon(
-                    CupertinoIcons.crop,
-                    color: CupertinoColors.systemGrey6,
-                    size: 24,
-                  ),
-                ),
-                CupertinoButton(
-                  padding: EdgeInsets.zero,
-                  onPressed: _openSettingsScreen,
-                  child: const Icon(
-                    CupertinoIcons.gear_solid,
-                    color: CupertinoColors.systemGrey6,
-                    size: 24,
-                  ),
-                ),
-                CupertinoButton(
-                  padding: EdgeInsets.zero,
-                  onPressed: () async {
-                    await _saveConfig();
-                    await widget.serverManager.shutdownServer();
-                    windowManager.close();
-                  },
-                  child: const Icon(
-                    CupertinoIcons.xmark_circle_fill,
-                    color: CupertinoColors.systemRed,
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(width: 8),
-              ],
-            ),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  Container(
-                    alignment: Alignment.center,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        SizedBox(
-                          width: 80,
-                          child: CupertinoButton(
-                            padding: EdgeInsets.zero,
-                            onPressed: isInitializing
-                                ? null
-                                : () {
-                                    if (!isRoiSet) {
-                                      _openRectSelectScreen();
-                                      return;
-                                    }
-                                    if (!isRunning &&
-                                        _elapsedTime == Duration.zero) {
-                                      _startTimer();
-                                    } else if (isRunning) {
-                                      _stopTimer();
-                                    } else {
-                                      _startTimer();
-                                    }
-                                  },
-                            color: isInitializing
-                                ? CupertinoColors.systemGrey
-                                : !isRoiSet
-                                    ? CupertinoColors.systemGrey
-                                    : isRunning
-                                        ? CupertinoColors.systemRed
-                                        : (_elapsedTime == Duration.zero)
-                                            ? CupertinoColors.systemGreen
-                                            : CupertinoColors.systemYellow,
-                            borderRadius: BorderRadius.circular(12),
-                            child: isInitializing
-                                ? const CupertinoActivityIndicator(
-                                    color: CupertinoColors.white)
-                                : Icon(
-                                    !isRoiSet
-                                        ? CupertinoIcons.crop
-                                        : isRunning
-                                            ? CupertinoIcons.pause_fill
-                                            : CupertinoIcons.play_arrow_solid,
-                                    color: CupertinoColors.white,
-                                    size: 32,
-                                  ),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Text(
-                          timerText,
-                          style: GoogleFonts.notoSans(
-                            textStyle: TextStyle(
-                              color: CupertinoColors.white,
-                              fontSize: showExpectedTime ? 44 : 48,
-                              height: 1.2,
-                            ),
-                          ),
-                        ),
-                      ],
                     ),
-                  ),
-                  if (showExpectedTime)
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          "$_nextHourCount시간 뒤: ${_expectedEndTime != null ? DateFormat('HH:mm:ss').format(_expectedEndTime!) : "XX:XX:XX"}",
-                          style: const TextStyle(
-                            color: CupertinoColors.systemGrey6,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  // 경험치 UI
-                  Flexible(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.center,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
+                    SizedBox(
+                      width: 148,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
                         children: [
-                          Text(
-                            !isInitValueInserted
-                                ? 'XX [X.XX%]'
-                                : '${numberFormat.format(totalExp)} [${totalPercentage.toStringAsFixed(2)}%]',
-                            style: GoogleFonts.notoSans(
-                              textStyle: const TextStyle(
-                                height: 1.2,
-                                color: CupertinoColors.systemYellow,
-                                fontWeight: FontWeight.w400,
-                                fontSize: 36,
-                              ),
+                          Transform.scale(
+                            scale: 0.8,
+                            child: CupertinoSwitch(
+                              value: showMeso,
+                              onChanged: (bool value) async {
+                                _safeSetState(() {
+                                  showMeso = value;
+                                });
+                                _saveConfig();
+                                if (value) {
+                                  await _openMesoRectSelectScreen();
+                                }
+                              },
+                              inactiveThumbColor: CupertinoColors.inactiveGray,
+                              inactiveTrackColor: CupertinoColors.inactiveGray,
+                              activeTrackColor: CupertinoColors.activeBlue,
+                              thumbColor: CupertinoColors.activeBlue,
+                              activeThumbImage: const AssetImage('assets/meso.png'),
+                              inactiveThumbImage:
+                                  const AssetImage('assets/meso.png'),
                             ),
                           ),
-                          const SizedBox(height: 2),
-                          if (showAverage != Duration.zero)
-                            Text(
-                              !isInitValueInserted
-                                  ? 'XX [X.XX%] / ${showAverage.inMinutes}분'
-                                  : '${numberFormat.format(averageExp)} [${averagePercentage.toStringAsFixed(2)}%] / ${showAverage.inMinutes}분',
-                              style: GoogleFonts.notoSans(
-                                textStyle: const TextStyle(
-                                  height: 1.2,
-                                  color: CupertinoColors.systemYellow,
-                                  fontWeight: FontWeight.w400,
-                                  fontSize: 18,
-                                ),
-                              ),
-                            ),
                         ],
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  // 메소 UI
-                  if (showMeso)
-                    Flexible(
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
+                    CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      onPressed: () async {
+                        _resetTimer();
+                      },
+                      child: const Icon(
+                        CupertinoIcons.restart,
+                        color: CupertinoColors.systemGrey6,
+                        size: 24,
+                      ),
+                    ),
+                    CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      onPressed: () async {
+                        await _openRectSelectScreen();
+                      },
+                      child: const Icon(
+                        CupertinoIcons.crop,
+                        color: CupertinoColors.systemGrey6,
+                        size: 24,
+                      ),
+                    ),
+                    CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      onPressed: _openSettingsScreen,
+                      child: const Icon(
+                        CupertinoIcons.gear_solid,
+                        color: CupertinoColors.systemGrey6,
+                        size: 24,
+                      ),
+                    ),
+                    CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      onPressed: () async {
+                        await _saveConfig();
+                        await widget.serverManager.shutdownServer();
+                        windowManager.close();
+                      },
+                      child: const Icon(
+                        CupertinoIcons.xmark_circle_fill,
+                        color: CupertinoColors.systemRed,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                ),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      Container(
                         alignment: Alignment.center,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
+                            SizedBox(
+                              width: 80,
+                              child: CupertinoButton(
+                                padding: EdgeInsets.zero,
+                                onPressed: isInitializing
+                                    ? null
+                                    : () {
+                                        if (!isRoiSet) {
+                                          _openRectSelectScreen();
+                                          return;
+                                        }
+                                        if (!isRunning &&
+                                            _elapsedTime == Duration.zero) {
+                                          _startTimer();
+                                        } else if (isRunning) {
+                                          _stopTimer();
+                                        } else {
+                                          _startTimer();
+                                        }
+                                      },
+                                color: isInitializing
+                                    ? CupertinoColors.systemGrey
+                                    : !isRoiSet
+                                        ? CupertinoColors.systemGrey
+                                        : isRunning
+                                            ? CupertinoColors.systemRed
+                                            : (_elapsedTime == Duration.zero)
+                                                ? CupertinoColors.systemGreen
+                                                : CupertinoColors.systemYellow,
+                                borderRadius: BorderRadius.circular(12),
+                                child: isInitializing
+                                    ? const CupertinoActivityIndicator(
+                                        color: CupertinoColors.white)
+                                    : Icon(
+                                        !isRoiSet
+                                            ? CupertinoIcons.crop
+                                            : isRunning
+                                                ? CupertinoIcons.pause_fill
+                                                : CupertinoIcons.play_arrow_solid,
+                                        color: CupertinoColors.white,
+                                        size: 32,
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
                             Text(
-                              !isInitValueInserted
-                                  ? 'XXXX 메소'
-                                  : '${numberFormat.format(totalMeso)} 메소',
+                              timerText,
                               style: GoogleFonts.notoSans(
-                                textStyle: const TextStyle(
+                                textStyle: TextStyle(
+                                  color: CupertinoColors.white,
+                                  fontSize: showExpectedTime ? 44 : 48,
                                   height: 1.2,
-                                  color: CupertinoColors.systemYellow,
-                                  fontWeight: FontWeight.w400,
-                                  fontSize: 36,
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 2),
-                            if (showMeso && showAverage != Duration.zero)
+                          ],
+                        ),
+                      ),
+                      if (showExpectedTime)
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              "$_nextHourCount시간 뒤: ${_expectedEndTime != null ? DateFormat('HH:mm:ss').format(_expectedEndTime!) : "XX:XX:XX"}",
+                              style: const TextStyle(
+                                color: CupertinoColors.systemGrey6,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      // 경험치 UI
+                      Flexible(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.center,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
                               Text(
                                 !isInitValueInserted
-                                    ? 'XXXX 메소 / ${showAverage.inMinutes}분'
-                                    : '${numberFormat.format(averageMeso)} 메소 / ${showAverage.inMinutes}분',
+                                    ? 'XX [X.XX%]'
+                                    : '${numberFormat.format(totalExp)} [${totalPercentage.toStringAsFixed(2)}%]',
                                 style: GoogleFonts.notoSans(
                                   textStyle: const TextStyle(
                                     height: 1.2,
                                     color: CupertinoColors.systemYellow,
                                     fontWeight: FontWeight.w400,
-                                    fontSize: 18,
+                                    fontSize: 36,
                                   ),
                                 ),
                               ),
-                          ],
+                              const SizedBox(height: 2),
+                              if (showAverage != Duration.zero)
+                                Text(
+                                  !isInitValueInserted
+                                      ? 'XX [X.XX%] / ${showAverage.inMinutes}분'
+                                      : '${numberFormat.format(averageExp)} [${averagePercentage.toStringAsFixed(2)}%] / ${showAverage.inMinutes}분',
+                                  style: GoogleFonts.notoSans(
+                                    textStyle: const TextStyle(
+                                      height: 1.2,
+                                      color: CupertinoColors.systemYellow,
+                                      fontWeight: FontWeight.w400,
+                                      fontSize: 18,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  const SizedBox(height: 14),
-                ],
-              ),
+                      const SizedBox(height: 4),
+                      // 메소 UI
+                      if (showMeso)
+                        Flexible(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.center,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  !isInitValueInserted
+                                      ? 'XXXX 메소'
+                                      : '${numberFormat.format(totalMeso)} 메소',
+                                  style: GoogleFonts.notoSans(
+                                    textStyle: const TextStyle(
+                                      height: 1.2,
+                                      color: CupertinoColors.systemYellow,
+                                      fontWeight: FontWeight.w400,
+                                      fontSize: 36,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                if (showMeso && showAverage != Duration.zero)
+                                  Text(
+                                    !isInitValueInserted
+                                        ? 'XXXX 메소 / ${showAverage.inMinutes}분'
+                                        : '${numberFormat.format(averageMeso)} 메소 / ${showAverage.inMinutes}분',
+                                    style: GoogleFonts.notoSans(
+                                      textStyle: const TextStyle(
+                                        height: 1.2,
+                                        color: CupertinoColors.systemYellow,
+                                        fontWeight: FontWeight.w400,
+                                        fontSize: 18,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: 14),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
           )
         )
       ),
