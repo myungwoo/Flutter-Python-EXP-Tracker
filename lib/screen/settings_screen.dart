@@ -9,7 +9,8 @@ class SettingsScreen extends StatefulWidget {
   final bool isRunning;
   final Duration updateInterval;
   final Duration timerEndTime;
-  final Duration showAverage;
+  final Duration showExpAverage;
+  final Duration showMesoAverage;
   final AudioPlayer audioPlayer;
   final bool showMeso;
   final bool showExpectedTime;
@@ -19,7 +20,8 @@ class SettingsScreen extends StatefulWidget {
     required this.isRunning,
     required this.updateInterval,
     required this.timerEndTime,
-    required this.showAverage,
+    required this.showExpAverage,
+    required this.showMesoAverage,
     required this.audioPlayer,
     required this.showMeso,
     required this.showExpectedTime,
@@ -32,11 +34,12 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
-  final int _totalPages = 2;
+  final int _totalPages = 3;
 
   int _selectedOption0 = 0;
   int _selectedOption1 = 0;
   int _selectedOption2 = 0;
+  int _selectedOption3 = 0;
   double currentVolume = 0.5;
   late AudioPlayer _audioPlayer;
   bool showMeso = false;
@@ -47,7 +50,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _selectedOption0 = _getSelectedUpdateIntervalFromDuration(widget.updateInterval);
     _selectedOption1 = _getSelectedOptionFromDuration(widget.timerEndTime);
-    _selectedOption2 = _getSelectedOptionFromDuration(widget.showAverage);
+    _selectedOption2 = _getSelectedOptionFromDuration(widget.showExpAverage);
+    _selectedOption3 = _getSelectedOptionFromDuration(widget.showMesoAverage);
     _audioPlayer = widget.audioPlayer;
     currentVolume = _audioPlayer.volume;
     showMeso = widget.showMeso;
@@ -102,10 +106,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final selectedDuration0 = _durationFromSelectedUpdateInterval(_selectedOption0);
     final selectedDuration1 = _durationFromSelectedOption(_selectedOption1);
     final selectedDuration2 = _durationFromSelectedOption(_selectedOption2);
+    final selectedDuration3 = _durationFromSelectedOption(_selectedOption3);
     Navigator.pop(context, {
       'updateInterval': selectedDuration0,
       'timerEndTime': selectedDuration1,
-      'showAverage': selectedDuration2,
+      'showExpAverage': selectedDuration2,
+      'showMesoAverage': selectedDuration3,
       'showMeso': showMeso,
       'showExpectedTime': showExpectedTime,
     });
@@ -147,6 +153,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       children: [
                         _buildPageOne(),
                         _buildPageTwo(),
+                        _buildPageThree(),
                       ],
                     ),
                   ),
@@ -192,10 +199,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text("평균 표시", style: GoogleFonts.notoSans(textStyle: const TextStyle(color: CupertinoColors.systemGrey6, fontSize: 14))),
+          Text("경험치 평균 표시", style: GoogleFonts.notoSans(textStyle: const TextStyle(color: CupertinoColors.systemGrey6, fontSize: 14))),
           const SizedBox(height: 4),
           CupertinoSegmentedControl<int>(padding: const EdgeInsets.all(2), unselectedColor: CupertinoColors.darkBackgroundGray, groupValue: _selectedOption2, children: {0: _buildSegment("안 함"), 1: _buildSegment("5분"), 2: _buildSegment("15분"), 3: _buildSegment("30분"), 4: _buildSegment("1시간")}, onValueChanged: (int value) { setState(() { _selectedOption2 = value; }); }),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
+          Text("메소 평균 표시", style: GoogleFonts.notoSans(textStyle: const TextStyle(color: CupertinoColors.systemGrey6, fontSize: 14))),
+          const SizedBox(height: 4),
+          CupertinoSegmentedControl<int>(padding: const EdgeInsets.all(2), unselectedColor: CupertinoColors.darkBackgroundGray, groupValue: _selectedOption3, children: {0: _buildSegment("안 함"), 1: _buildSegment("5분"), 2: _buildSegment("15분"), 3: _buildSegment("30분"), 4: _buildSegment("1시간")}, onValueChanged: (int value) { setState(() { _selectedOption3 = value; }); }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPageThree() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 48),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
           Row(
             children: [
               Text("N 시간 후 예상 시각 표시", style: GoogleFonts.notoSans(textStyle: const TextStyle(color: CupertinoColors.systemGrey6, fontSize: 14))),

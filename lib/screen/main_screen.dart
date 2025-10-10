@@ -43,7 +43,8 @@ class _MainScreenState extends State<MainScreen> with WindowListener {
   bool isUpdatingData = false;
 
   // UI 관련 시간 설정
-  Duration showAverage = Duration.zero;
+  Duration showExpAverage = Duration.zero;
+  Duration showMesoAverage = Duration.zero;
   Duration updateInterval = const Duration(seconds: 1);
   Duration timerEndTime = Duration.zero;
   Duration _elapsedTime = Duration.zero;
@@ -123,10 +124,14 @@ class _MainScreenState extends State<MainScreen> with WindowListener {
   }
 
   void _calculateAverage() {
-    if (showAverage == Duration.zero || _elapsedTime.inSeconds <= 0) return;
-    averageExp = ((totalExp / _elapsedTime.inSeconds) * showAverage.inSeconds).floor();
-    averagePercentage = (totalPercentage / _elapsedTime.inSeconds) * showAverage.inSeconds;
-    averageMeso = ((totalMeso / _elapsedTime.inSeconds) * showAverage.inSeconds).floor();
+    if (_elapsedTime.inSeconds <= 0) return;
+    if (showExpAverage != Duration.zero) {
+      averageExp = ((totalExp / _elapsedTime.inSeconds) * showExpAverage.inSeconds).floor();
+      averagePercentage = (totalPercentage / _elapsedTime.inSeconds) * showExpAverage.inSeconds;
+    }
+    if (showMeso && showMesoAverage != Duration.zero) {
+      averageMeso = ((totalMeso / _elapsedTime.inSeconds) * showMesoAverage.inSeconds).floor();
+    }
   }
 
   String _formatDuration(Duration duration) {
@@ -164,7 +169,8 @@ class _MainScreenState extends State<MainScreen> with WindowListener {
       "updateInterval": updateInterval.inSeconds,
       "timerEndTime": timerEndTime.inSeconds,
       "volume": _audioPlayer.volume,
-      "showAverage": showAverage.inSeconds,
+      "showExpAverage": showExpAverage.inSeconds,
+      "showMesoAverage": showMesoAverage.inSeconds,
       "showMeso": showMeso,
       "showExpectedTime": showExpectedTime,
     };
@@ -210,7 +216,8 @@ class _MainScreenState extends State<MainScreen> with WindowListener {
         updateInterval = Duration(seconds: config["updateInterval"] ?? 1);
         timerEndTime = Duration(seconds: config["timerEndTime"] ?? 0);
         _audioPlayer.setVolume(config["volume"] ?? 0.5);
-        showAverage = Duration(seconds: config["showAverage"] ?? 0);
+        showExpAverage = Duration(seconds: config["showExpAverage"] ?? 0);
+        showMesoAverage = Duration(seconds: config["showMesoAverage"] ?? 0);
         showMeso = config["showMeso"] ?? false;
         showExpectedTime = config["showExpectedTime"] ?? false;
       });
@@ -501,7 +508,8 @@ class _MainScreenState extends State<MainScreen> with WindowListener {
           isRunning: isRunning,
           updateInterval: updateInterval,
           timerEndTime: timerEndTime,
-          showAverage: showAverage,
+          showExpAverage: showExpAverage,
+          showMesoAverage: showMesoAverage,
           audioPlayer: _audioPlayer,
           showMeso: showMeso,
           showExpectedTime: showExpectedTime,
@@ -514,7 +522,8 @@ class _MainScreenState extends State<MainScreen> with WindowListener {
       _safeSetState(() {
         updateInterval = result['updateInterval'];
         timerEndTime = result['timerEndTime'];
-        showAverage = result['showAverage'];
+        showExpAverage = result['showExpAverage'];
+        showMesoAverage = result['showMesoAverage'];
         showMeso = result['showMeso'];
         showExpectedTime = result['showExpectedTime'];
       });
@@ -616,7 +625,7 @@ class _MainScreenState extends State<MainScreen> with WindowListener {
                       ),
                     ),
                     SizedBox(
-                      width: 148,
+                      width: 164,
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
@@ -794,11 +803,11 @@ class _MainScreenState extends State<MainScreen> with WindowListener {
                                 ),
                               ),
                               const SizedBox(height: 2),
-                              if (showAverage != Duration.zero)
+                              if (showExpAverage != Duration.zero)
                                 Text(
                                   !isInitValueInserted
-                                      ? 'XX [X.XX%] / ${showAverage.inMinutes}분'
-                                      : '${numberFormat.format(averageExp)} [${averagePercentage.toStringAsFixed(2)}%] / ${showAverage.inMinutes}분',
+                                      ? 'XX [X.XX%] / ${showExpAverage.inMinutes}분'
+                                      : '${numberFormat.format(averageExp)} [${averagePercentage.toStringAsFixed(2)}%] / ${showExpAverage.inMinutes}분',
                                   style: GoogleFonts.notoSans(
                                     textStyle: const TextStyle(
                                       height: 1.2,
@@ -836,11 +845,11 @@ class _MainScreenState extends State<MainScreen> with WindowListener {
                                   ),
                                 ),
                                 const SizedBox(height: 2),
-                                if (showMeso && showAverage != Duration.zero)
+                                if (showMeso && showMesoAverage != Duration.zero)
                                   Text(
                                     !isInitValueInserted
-                                        ? 'XXXX 메소 / ${showAverage.inMinutes}분'
-                                        : '${numberFormat.format(averageMeso)} 메소 / ${showAverage.inMinutes}분',
+                                        ? 'XXXX 메소 / ${showMesoAverage.inMinutes}분'
+                                        : '${numberFormat.format(averageMeso)} 메소 / ${showMesoAverage.inMinutes}분',
                                     style: GoogleFonts.notoSans(
                                       textStyle: const TextStyle(
                                         height: 1.2,
