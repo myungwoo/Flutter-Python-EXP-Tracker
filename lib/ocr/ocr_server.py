@@ -134,18 +134,18 @@ def preprocess_roi(roi, debug_filename: str = None):
     resized = cv2.resize(mask, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
     processed_image = cv2.GaussianBlur(resized, (3, 3), 0)
     
-    if debug_filename:
-        # py 파일 위치를 기준으로 'debug_images' 폴더 경로 지정
-        save_dir = os.path.join(debug_base_path, "debug_images")
+    # if debug_filename:
+    #     # py 파일 위치를 기준으로 'debug_images' 폴더 경로 지정
+    #     save_dir = os.path.join(debug_base_path, "debug_images")
         
-        # 폴더가 없으면 생성
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
+    #     # 폴더가 없으면 생성
+    #     if not os.path.exists(save_dir):
+    #         os.makedirs(save_dir)
             
-        # 파일 저장
-        now_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        save_path = os.path.join(save_dir, f"{debug_filename}_{now_str}.png")
-        cv2.imwrite(save_path, processed_image)
+    #     # 파일 저장
+    #     now_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    #     save_path = os.path.join(save_dir, f"{debug_filename}_{now_str}.png")
+    #     cv2.imwrite(save_path, processed_image)
         
     return processed_image
 
